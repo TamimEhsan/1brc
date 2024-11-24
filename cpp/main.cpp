@@ -24,7 +24,17 @@ void updateCities(string city, float temperature) {
     city_data.max = max(city_data.max, temperature);
 }
 
-
+void processLine(char *line) {
+    char *city = strtok(line, ";");
+    char *temp_str = strtok(NULL, ";");
+    
+    if (city && temp_str) {
+        // Parse temperature
+        float temperature = strtof(temp_str, NULL);
+        //printf("City: %s, Temperature: %.1f\n", city, temperature);
+        updateCities(city, temperature);
+    }
+}
 
 void challenge(string fileName) {
     FILE *file = fopen(fileName.c_str(), "r");
@@ -48,32 +58,24 @@ void challenge(string fileName) {
             // Read until a newline or end of buffer
             char *line_start = &buffer[idx];
             char *line_end = strchr(line_start, '\n');
-            
+
             if (line_end == NULL) {
                 break; // If no newline is found, break out of the loop and process next chunk
             }
             
             *line_end = '\0'; // Terminate the current line with null-terminator
-            
-            // Now we can process the line
-            // Split by ';'
-            char *city = strtok(line_start, ";");
-            char *temp_str = strtok(NULL, ";");
-            
-            if (city && temp_str) {
-                // Parse temperature
-                float temperature = strtof(temp_str, NULL);
-                //printf("City: %s, Temperature: %.1f\n", city, temperature);
-                line_no++;
 
-                if( (line_no >= 100000000) && (line_no % 100000000 == 0)) {
-                    fprintf(stderr, "Processing line %d\n", line_no);
-                }
-                 updateCities(city, temperature);
-            }
-            
+            int start = idx;
+            int end = line_end - buffer;
+
+            // copy the line to a new buffer
+            char line[end - start + 1];
+            memcpy(line, &buffer[start], end - start + 1);
+        
+            processLine(line);
+
             // Move to the next line in the buffer
-            idx = (line_end - buffer) + 1;
+            idx = end + 1;
         }
 
         // If we reached the end of the buffer and there's incomplete data, store it for the next iteration
