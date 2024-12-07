@@ -63,13 +63,11 @@ func consumer(ch <-chan []string, id int, results chan<- []City) {
 	cityBatch := []City{}
 	for batch := range ch {
 		for _, line := range batch {
-			lineSplit := strings.Split(line, ";")
-			if len(lineSplit) != 2 {
+			city, tempStr, split := strings.Cut(line, ";")
+			if !split {
 				fmt.Println("Invalid line format:", line)
 				continue
 			}
-			city := lineSplit[0]
-			tempStr := lineSplit[1]
 			temp, err := strconv.ParseFloat(tempStr, 64)
 			if err != nil {
 				panic(err)
@@ -100,12 +98,8 @@ func mergeCities(results <-chan []City, outputs *[]string) {
 			}
 			c.total += result.temp
 			c.count++
-			if result.temp < c.min {
-				c.min = result.temp
-			}
-			if result.temp > c.max {
-				c.max = result.temp
-			}
+			c.min = min(c.min, result.temp)
+			c.max = max(c.max, result.temp)
 			cities[result.name] = c
 		}
 	}

@@ -1,4 +1,6 @@
 1brc
-cpp/old_iterations
 *.exe
 *.out
+cpp/*
+go/*
+go-1brc/*

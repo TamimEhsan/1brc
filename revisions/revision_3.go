@@ -52,13 +52,12 @@ func producer(ch chan string, inputFile string) {
 
 func consumer(ch <-chan string, id int, cities map[string]CityData) {
 	for line := range ch {
-		lineSplit := strings.Split(line, ";")
-		if len(lineSplit) != 2 {
+		city, tempStr, split := strings.Cut(line, ";")
+		if !split {
 			fmt.Println("Invalid line format:", line)
-			continue
+			return
 		}
-		city := lineSplit[0]
-		tempStr := lineSplit[1]
+
 		temp, err := strconv.ParseFloat(tempStr, 64)
 		if err != nil {
 			fmt.Println("Error converting temperature:", err)
@@ -70,12 +69,8 @@ func consumer(ch <-chan string, id int, cities map[string]CityData) {
 		}
 		c.total += temp
 		c.count++
-		if temp < c.min {
-			c.min = temp
-		}
-		if temp > c.max {
-			c.max = temp
-		}
+		c.min = min(c.min, temp)
+		c.max = max(c.max, temp)
 		cities[city] = c
 		// fmt.Printf("from consumer %v: %s;%.2f\n", id, city, temp)
 	}

@@ -40,7 +40,7 @@ func producer(inputFile string) {
 		_ = line
 		lineCount++
 		parse(line)
-		if lineCount >= 100000000 && lineCount%100000010 == 0 {
+		if lineCount >= 100000000 && lineCount%100000000 == 0 {
 			fmt.Println("Line count:", lineCount)
 		}
 	}
@@ -51,13 +51,12 @@ func producer(inputFile string) {
 var cities = make(map[string]CityData)
 
 func parse(line string) {
-	lineSplit := strings.Split(line, ";")
-	if len(lineSplit) != 2 {
+	city, tempStr, split := strings.Cut(line, ";")
+	if !split {
 		fmt.Println("Invalid line format:", line)
 		return
 	}
-	city := lineSplit[0]
-	tempStr := lineSplit[1]
+
 	temp, err := strconv.ParseFloat(tempStr, 64)
 	if err != nil {
 		fmt.Println("Error converting temperature:", err)
@@ -69,12 +68,8 @@ func parse(line string) {
 	}
 	c.total += temp
 	c.count++
-	if temp < c.min {
-		c.min = temp
-	}
-	if temp > c.max {
-		c.max = temp
-	}
+	c.min = min(c.min, temp)
+	c.max = max(c.max, temp)
 	cities[city] = c
 }
 

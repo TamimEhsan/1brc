@@ -41,7 +41,7 @@ Seems simple, until you notice some issues. Reading from disk is an io operation
 Let's stop here a moment. C++ doesn't have thread functionalities built in. We need posix compatible pthread implementation for it. Morever, working with threads in C is a pain. If we are working with thread then let's switch to Golang. 
 
 ### Let's start again
-We will rewrite the whole thing again in Go. To make sure everything is working nicely, we again read the whole file using the already implemented buffered reader in go (Life is much simpler here). It takes about 2m5s to just read the whole file. If we remember, doing so in C++ took about 2m8s! That's almost the same. So, we are good to go. And for completing the whole challenge takes about 3m40s! Even faster than the C++ one.
+We will rewrite the whole thing again in Go. To make sure everything is working nicely, we again read the whole file using the already implemented buffered reader in go (Life is much simpler here). It takes about 2m3s to just read the whole file. If we remember, doing so in C++ took about 2m8s! That's almost the same. So, we are good to go. And for completing the whole challenge takes about 2m48s! Even faster than the C++ one.
 
 ### Adding producer and consumer
 For anyone who is new to this, there is a simple producer and consumer example here, where a producer will produce something and consumers will consume them. After the production is complete, producer will end and consumers will finish after consuming and processing everything. We are using go routine for the parallelist. For communication between the threads we use go channels and to wait for the threads to finish we use wait groups. 
@@ -98,6 +98,82 @@ Solution? Use buffer here too! Instead of readily write to the channels, we buff
 10.50s  2.39% 49.74%     14.87s  3.39%  runtime.findObject
 ```
 
-Result? 2m10s! If we see the profiler result we will see those concurrency based bottlenecks are gone. Also, if you remember, the time to only read data from the file was 2m8s. So, we are now limited by the speed of disk IO! We have optimized our CPU bound tasks efficiently. 
+Result? 2m4s! If we see the profiler result we will see those concurrency based bottlenecks are gone. Also, if you remember, the time to only read data from the file was 2m3s. So, we are now limited by the speed of disk IO! We have optimized our CPU bound tasks efficiently. 
 
 It's a great checkpoint. If you have achieved this result, then you deserve a pat in the back just like I do! 
+
+
+### Hardware, HDD, SDD and read speed
+As we have seen earlier we are bottlenecked by our file reading which was 2m3s. We can think of someway to increase the speed? May be read the file in chunks? or read the file in parallel ie divide the file in multiple parts and read them in parallel. Seems about right. However reading a file in parallel has some problems. How can we know that we are dividing the files correctly? May be we have partitioned the file causing an input to be split into two segment? It's not that hard to solve this though. I wrote some code for this too to check the time. Well? With concurrency of 2 or 4 or 10 doesn't matter the time doesn't decrease. It increases due to concurrency overhead. What are we not considering? 
+
+So far we have only focused on software and didn't think much about hardware. Let's see why we should also think about hardware. At first let's find the HDD disk IO speed. Running `winsat disk -drive g` command gives us the sequential read speed at 107MB/s. Our file size is 13795961879B ie 13,156MB. So, time required to read the file of size 13,156MB at a speed of 107MB/s will take 13,156/107 = 122.96s = 2m3s! Holy moly! This is insanely accurate. I know you won't believe me, so i am attaching a screenshot. So, no matter what we do we can't go lower than this.
+
+![alt text](Untitled.jpg)
+
+Unless, we switch to SSD! I luckily have a SSD storage too! The read speed of the SSD? 1586MB/s. Yup, 1.5GB/s. We can read the whole file withing 10s or may be even faster.  So, we don't need to do any shenanigans with reading files. So, our bottleneck from file io is gone. We can focus on the processing again. 
+
+Without chaning any codes whatsover we run the code for our fourth try. It comes out at 1m50s. We run the profiler again and get the following output
+```bash
+  flat  flat%   sum%        cum   cum%
+   39s 13.05% 13.05%     39.01s 13.05%  runtime.stdcall2    
+16.76s  5.61% 18.66%     17.60s  5.89%  runtime.cgocall     
+16.08s  5.38% 24.04%     30.96s 10.36%  runtime.mapaccess2_faststr
+15.14s  5.07% 29.10%     15.16s  5.07%  runtime.stdcall3
+14.86s  4.97% 34.08%     14.87s  4.98%  runtime.stdcall1
+11.61s  3.88% 37.96%     11.67s  3.90%  strconv.readFloat
+10.66s  3.57% 41.53%     10.66s  3.57%  runtime.memclrNoHeapPointers
+10.61s  3.55% 45.08%     41.40s 13.85%  runtime.mallocgc
+ 9.48s  3.17% 48.25%      9.48s  3.17%  indexbytebody
+ 9.06s  3.03% 51.28%      9.06s  3.03%  aeshashbody
+```
+
+If you can't understand what's this, then don't worry. I didn't too. However, we can see some familiar terms like mallocgc, memclr, heap pointers. These are related to heap memory. What's happening here is that we are constantly creating new arrays in heap. As go has no free function to clear memories, so the garbage collector is doing works in the background also causing some overheads. Solution? Use a memory pool. We create an global array of free resources. We produce to any of the free resource and consume from it. So, now instead of sending the array (the pointer actually) we send the index. Seems similar. It is, we are just optimizing the usage. Result? 59s. Big win. Current profile output is
+
+```bash
+      flat  flat%   sum%        cum   cum%
+    14.85s 10.61% 10.61%     15.20s 10.86%  runtime.cgocall
+    14.46s 10.33% 20.94%     24.71s 17.65%  runtime.mapaccess2_faststr
+    11.88s  8.49% 29.42%     11.94s  8.53%  strconv.readFloat
+     9.33s  6.66% 36.09%     18.03s 12.88%  runtime.mallocgc
+     8.32s  5.94% 42.03%      8.32s  5.94%  indexbytebody
+     7.06s  5.04% 47.07%     31.83s 22.74%  main.mergeCities
+     6.37s  4.55% 51.63%      6.37s  4.55%  strconv.atof64exact
+     4.93s  3.52% 55.15%     54.96s 39.26%  main.producer
+     3.84s  2.74% 57.89%      3.84s  2.74%  runtime.nextFreeFast (inline)
+     3.81s  2.72% 60.61%      3.81s  2.72%  memeqbody
+```
+
+### How far can we improve?
+Let's go look for other's implementation and see about their timings. Ben Hoyt also did this challenge. We will take his best time and his worst time. From his repo 
+
+> These are my progressively-faster solutions to the One Billion Row Challenge in Go: from a simple unoptimised version (r1.go) that takes 1 minute 45 seconds, to an optimised and parallelised version (r9.go) that takes 4 seconds.
+
+The code run in the current configuration takes 2m49s and the final one takes 5s. (Holy shiet!) I need to keep up my game. 
+
+Honestly speaking, I am done :(
+
+### Break it down further
+No I am not done! Let's go again. We will bit by bit break every part of code and try to find out what's the fucking bottleneck. 
+
+We can read the file in less than 10s with that 1.5GB/s speed. Then let's see how much it takes to only split that in lines. After a bit change it turns out it alone takes 1m! What? Yes it makes sense now.
+
+We are not utilizing our CPU properly. Although we are reading the file fast and processing everything fast too. We forgot one thing. We are spliting the file in lines in one single thread. This makes it the bottleneck. Solution? Read the file in chunks, send them to processors and let them do the processing line by line. Theoretically this is ok. However we have one small issue. How can we split the file in perfect chunks? It's a bit tricky, but doable. We read a chunk. Find the last position of newline. Send chunk up untill that position to the workers and keep the remaining portions in buffer. We will prepend it with the next chunk. This leads to our time to 40s! Another 10s improvement.
+
+Let's pause here. Break down the workload. 
+We have 3 stages. At first read the file in chunks. Then we send the chunks to next stages where multiple workers process them. Finally, all the results are accumulated and the final result is found. Seems familiar? No? Yes? It's freaking MapReduce! We have gradually wrote a MapReduce without even knowing! 
+
+### The MapReduce
+There are multiple stages in an actual MapReduce. We will keep it simple. We will have splitter, mapper and reducer. At first we will split the file into multiple jobs. The mapper will map inputs in key value pair. Finally the reducer will combine results of multiple mapper jobs. We will rewrite some of our codes to align with the mapreduce paradigm. And guess what? It's 20s! 
+
+
+### Final 
+After profiling we find that the `strconv.ParseFloat()` takes about 7s! That shouldn't happen. It's a simple parsing and we will implement it ourself. Morever as the precision is only 1 digit, we will just use int throughout the operation and will output the final result divided by 10. This simple improvement decreases our runtime to 0m15s! 
+
+We can improve some more. Notice how we are parsing a line? We at first extract a line using `reader.ReadString('\n')`. Then we seperate the city and temperature using `strings.Cut`. Then parse the temperature. So, we are looping over the same data 3 times. We can do all of that ourselves in one loop. The code will get messy but fast. This simple change improved our code to 0m11s! 
+
+Instead of using string as the map key, we will use the hash. We will use a rolling hash for it. Luckily we can do it in the loop for reading the map! This decreases another second! 
+
+And we are done. We can improve more though. The map takes a lot of time. We can use some sort of implementation ourselves. But it is enough for me! Ben Hoyt did it in 5s. I am happy I could do it at double his time. I will need to live twice to be like him. Till then bye!
+
+
+
